@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "691931342546",
+    "firebase_url": "https://firestoreplayground-a1825.firebaseio.com",
+    "project_id": "firestoreplayground-a1825",
+    "storage_bucket": "firestoreplayground-a1825.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:691931342546:android:7a97581b1297f50cdf2f0b",
+        "android_client_info": {
+          "package_name": "com.playgrounds.firestoreplayground"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "691931342546-oo7asmf59uffsq4v5humio03t661fhr3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.playgrounds.firestoreplayground",
+            "certificate_hash": "f805eaa4c92a93204f3a0f295eb81c36025d2c6d"
+          }
+        },
+        {
+          "client_id": "691931342546-odrgclr21mui9u6k0s2lsueg5s9f0j97.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHbnplDGBA9xc1KcLRc5aIHwqFGHrtm6Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "691931342546-odrgclr21mui9u6k0s2lsueg5s9f0j97.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
