@@ -1,25 +1,21 @@
 package com.playgrounds.firestoreplayground
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.*
 import androidx.lifecycle.Observer
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.firebase.ui.auth.AuthUI
 import com.firebase.ui.auth.IdpResponse
@@ -27,9 +23,11 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.one_string_line.view.*
 import java.util.*
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
@@ -74,6 +72,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }})
+
+        mode.postValue(Mode.Messages)
+
+        viewModel.messagesLiveData.observe(this, Observer { l ->
+            if (mode.value == Mode.Messages && l != null) {
+                logAdapter.submitList(l.map { message -> message.displayMessage })
+            }
+        })
+
+        viewModel.authenticationLiveData.observe(this, Observer{user -> commands.find { "user" in it.caption }?.let{
+            it.caption = user?.displayName?:"N/A"
+        }})
     }
 
     private fun gibberish() = VM.Message(viewModel.fb.currentUser?.displayName?:"N/A", viewModel.content(10), Date())
@@ -92,7 +102,6 @@ class MainActivity : AppCompatActivity() {
                 .setAvailableProviders(providers)
                 .build(),
             RC_SIGN_IN)
-
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -100,10 +109,11 @@ class MainActivity : AppCompatActivity() {
 
         if (requestCode == RC_SIGN_IN) {
             val response = IdpResponse.fromResultIntent(data)
-
+            Log.v("Auth", "Response: $response")
             if (resultCode == Activity.RESULT_OK) {
                 // Successfully signed in
                 val user: FirebaseUser? = FirebaseAuth.getInstance().currentUser
+                viewModel.authenticationLiveData.postValue(user)
                 viewModel.prefs.putString("user", user?.displayName)
             } else {
                 Toast.makeText(this, "FAILED TO SIGN IN", Toast.LENGTH_LONG).show()
@@ -115,12 +125,6 @@ class MainActivity : AppCompatActivity() {
         private const val RC_SIGN_IN = 14
     }
 
-}
-
-open class TrivialDiff<T>: DiffUtil.ItemCallback<T>() {
-    override fun areItemsTheSame(oldItem: T, newItem: T) = oldItem == newItem
-    @SuppressLint("DiffUtilEquals")
-    override fun areContentsTheSame(oldItem: T, newItem: T) = oldItem == newItem
 }
 
 abstract class VH <T> private constructor(val view: View) : RecyclerView.ViewHolder(view) {
@@ -135,7 +139,7 @@ class StrVH(parent: ViewGroup) : VH<String>(parent, R.layout.one_string_line) {
     }
 }
 
-data class Command(val caption: String, val onClick: () -> Unit = {})
+data class Command(var caption: String, val onClick: () -> Unit = {})
 class CommandVH(parent: ViewGroup) : VH<Command> (parent, R.layout.one_string_line) {
     private val text = view.lineText
     override fun bind(data: Command) {
@@ -144,14 +148,18 @@ class CommandVH(parent: ViewGroup) : VH<Command> (parent, R.layout.one_string_li
     }
 }
 
-class LA <T>(private val factory: (ViewGroup) -> VH<T>) : ListAdapter<T, VH<T>>(TrivialDiff()) {
-    override fun submitList(list: List<T>?) {
-        list?.let {
-            super.submitList(it)
+class LA <T: Any>(private val factory: (ViewGroup) -> VH<T>) : RecyclerView.Adapter<VH<T>>() {
+    private var underlyingList: ArrayList<T> = arrayListOf()
+    fun submitList(list: List<T>?) {
+        list?:return
+        Handler(Looper.getMainLooper()).post {
+            underlyingList = ArrayList<T>().apply{ addAll(list) }
             notifyDataSetChanged()
         }
     }
 
+    private fun getItem(i: Int) = underlyingList[i]
+    override fun getItemCount(): Int = underlyingList.size
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH<T> = factory(parent)
     override fun onBindViewHolder(holder: VH<T>, position: Int) {
         val data = getItem(position)
@@ -174,6 +182,8 @@ class VM(context: Context): ViewModel() {
     val prefs = Prefs(context)
     val fb = DBase()
     private val mizzBronteMizzBronte = MizzBronte(context)
+    val messagesLiveData get() = fb.liveData
+    val authenticationLiveData = MutableLiveData<FirebaseUser>()
 
     fun content(words: Int) = mizzBronteMizzBronte.get(words)
 
@@ -187,8 +197,23 @@ class VM(context: Context): ViewModel() {
         val displayMessage = "[$timeStamp]\n$title: $message"
     }
     class DBase {
-        private var db = FirebaseFirestore.getInstance()
+        val liveData = MutableLiveData<List<Message>>()
         val currentUser get() = FirebaseAuth.getInstance().currentUser
+        private var db = FirebaseFirestore.getInstance()
+
+        init {
+            db.collection("Messages").addSnapshotListener{querySnapshot, firebaseFirestoreException ->
+                if (firebaseFirestoreException != null) {
+                    Log.w("DBase", "failure $firebaseFirestoreException")
+                    return@addSnapshotListener
+                }
+                Log.v("DBase", "Received ${querySnapshot?.documents?.size}")
+                querySnapshot?.documents?.mapNotNull { doc -> doc.data?.let{m -> Message(m)} }?.let {
+                    liveData.postValue(it)
+                }
+            }
+        }
+
         fun addMessage(message: Message) {
             db.collection("Messages")
                 .add(message.map)
@@ -197,7 +222,7 @@ class VM(context: Context): ViewModel() {
         }
 
         fun getMessages(onNewMessages: (List<Message>) -> Unit) {
-            db.collection("Messages").get().addOnSuccessListener { querySnapshot -> querySnapshot.documents
+            db.collection("Messages").orderBy("TimeStamp", Query.Direction.DESCENDING).get().addOnSuccessListener { querySnapshot -> querySnapshot.documents
                     .mapNotNull { doc -> doc.data?.let{Message(it)} }
                     .let(onNewMessages)
             }
